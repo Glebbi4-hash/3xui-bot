@@ -122,6 +122,26 @@ async def cb_req_inbound(callback: CallbackQuery, config: Config):
     user_id = int(parts[2])
     name = parts[3]
     inbound_id = int(parts[4])
+    builder = InlineKeyboardBuilder()
+    builder.button(text="7 дней",    callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:7")
+    builder.button(text="30 дней",   callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:30")
+    builder.button(text="90 дней",   callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:90")
+    builder.button(text="Бессрочно", callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:0")
+    builder.adjust(2, 2)
+    await callback.message.edit_text(
+        callback.message.text + "\n\nВыберите срок доступа:",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("req:expire:"))
+async def cb_req_expire(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    user_id = int(parts[2])
+    name = parts[3]
+    inbound_id = int(parts[4])
+    expire_days = int(parts[5])
     safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
     email = f"{safe_name}_{user_id}"
     xui = _xui(config)
@@ -129,17 +149,18 @@ async def cb_req_inbound(callback: CallbackQuery, config: Config):
     client_uuid = await xui.add_client(
         inbound_id, email=email,
         traffic_gb=config.DEFAULT_TRAFFIC_GB,
-        expire_days=config.DEFAULT_EXPIRE_DAYS,
+        expire_days=expire_days,
         tg_id=user_id,
     )
     link = await xui.get_client_link(inbound_id, client_uuid) if client_uuid else None
     await xui.close()
     if not client_uuid:
         await callback.message.edit_text(
-            callback.message.text + "\n\n❌ <b>Ошибка создания клиента</b>",
+            callback.message.text + "\n\nОшибка создания клиента",
             reply_markup=None,
         )
         return
+    expire_str = f"{expire_days} дн." if expire_days else "Бессрочно"
     if link:
         import qrcode, io
         from aiogram.types import BufferedInputFile
@@ -154,18 +175,18 @@ async def cb_req_inbound(callback: CallbackQuery, config: Config):
             await callback.bot.send_photo(
                 user_id,
                 photo=BufferedInputFile(buf.read(), filename="qr.png"),
-                caption=f"✅ <b>Доступ одобрен!</b>\n\n🔗 VLESS ссылка:\n<code>{link}</code>\n\n📱 Отсканируйте QR в v2rayNG или Hiddify",
+                caption=f"Dostup odobren!\nSrok: {expire_str}\n\nVLESS:\n{link}",
             )
         except Exception as e:
             logger.error("Failed to send to user %s: %s", user_id, e)
     else:
         try:
             await callback.bot.send_message(
-                user_id, f"✅ <b>Доступ одобрен!</b>\n\n🆔 UUID: <code>{client_uuid}</code>",
+                user_id, f"Dostup odobren! Srok: {expire_str}\nUUID: {client_uuid}",
             )
         except Exception as e:
             logger.error("Failed to notify user %s: %s", user_id, e)
     await callback.message.edit_text(
-        callback.message.text + f"\n\n✅ <b>Одобрено</b> → инбаунд #{inbound_id}\n📧 {email}",
+        callback.message.text + f"\n\nОдобрено #{inbound_id}\n{email}\nСрок: {expire_str}",
         reply_markup=None,
     )
