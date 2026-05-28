@@ -162,6 +162,7 @@ async def cb_req_inbound(callback: CallbackQuery, config: Config):
         inbound_id, email=email,
         traffic_gb=config.DEFAULT_TRAFFIC_GB,
         expire_days=config.DEFAULT_EXPIRE_DAYS,
+        tg_id=user_id,
     )
     link = await xui.get_client_link(inbound_id, client_uuid) if client_uuid else None
     await xui.close()

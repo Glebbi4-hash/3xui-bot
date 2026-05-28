@@ -112,10 +112,31 @@ async def cb_delete_confirm(callback: CallbackQuery, config: Config):
     inbound_id, idx, client_id = int(parts[2]), int(parts[3]), parts[4]
     xui = _xui(config)
     await xui.login()
+    # Get client info before deletion
+    client, _ = await _get_client(xui, inbound_id, idx)
     ok = await xui.delete_client(inbound_id, client_id)
     await xui.close()
     if ok:
         await callback.answer("✅ Удалён", show_alert=True)
+        # Notify user if tgId is set
+        if client:
+            tg_id = client.get("tgId")
+            email = client.get("email", "")
+            if tg_id and str(tg_id) != "0":
+                try:
+                    await callback.bot.send_message(
+                        int(tg_id),
+                        "⚠️ <b>Ваш аккаунт удалён</b>\n\n"
+                        f"Профиль <b>{email}</b> удалён администратором.\n\n"
+                        "Удалите профиль из VPN-приложений:\n"
+                        "• Hiddify: Настройки → Профили → удалить\n"
+                        "• v2rayNG: долгое нажатие → удалить\n"
+                        "• Streisand: смахните влево → удалить\n\n"
+                        "Если есть вопросы — обратитесь к администратору.",
+                        parse_mode="HTML",
+                    )
+                except Exception as e:
+                    logger.warning("Could not notify user %s: %s", tg_id, e)
         callback.data = f"clients:list:{inbound_id}"
         await cb_clients_list(callback, config)
     else:

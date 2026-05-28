@@ -94,7 +94,7 @@ class XUIClient:
                 result[s["uuid"]] = s
         return result
 
-    async def add_client(self, inbound_id, email, traffic_gb=0, expire_days=0):
+    async def add_client(self, inbound_id, email, traffic_gb=0, expire_days=0, tg_id=0):
         import json as _json
         client_id = str(uuid.uuid4())
         # Get inbound to detect flow type
@@ -115,7 +115,7 @@ class XUIClient:
                 "limitIp": 0,
                 "flow": flow,
                 "subId": "",
-                "tgId": ""
+                "tgId": str(tg_id) if tg_id else ""
             }]})
         }
         result = await self._request("POST", "/panel/api/inbounds/addClient", json=payload)
