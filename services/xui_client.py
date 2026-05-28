@@ -138,7 +138,9 @@ class XUIClient:
         return bool(result and result.get("success"))
 
     async def get_client_link(self, inbound_id, client_uuid):
-        inbound = await self.get_inbound(inbound_id)
+        # Use get_inbounds (list) as it contains full streamSettings
+        inbounds = await self.get_inbounds()
+        inbound = next((i for i in inbounds if i["id"] == inbound_id), None)
         if not inbound:
             return None
         import json, base64
@@ -150,7 +152,26 @@ class XUIClient:
         network = stream.get("network", "tcp")
         security = stream.get("security", "none")
         if protocol == "vless":
-            return f"vless://{client_uuid}@{address}:{port}?type={network}&security={security}#{inbound.get(chr(114)+chr(101)+chr(109)+chr(97)+chr(114)+chr(107), 'VPN')}"
+            params = f"type={network}&security={security}&encryption=none"
+            if security == "reality":
+                reality = stream.get("realitySettings", {})
+                rs = reality.get("settings", {})
+                pbk = rs.get("publicKey", "")
+                fp  = rs.get("fingerprint", "chrome")
+                sni = rs.get("serverName", "") or (reality.get("serverNames", [""])[0])
+                sid = (reality.get("shortIds", [""])[-1])
+                params += f"&pbk={pbk}&fp={fp}&sni={sni}&sid={sid}&spx=%2F"
+            import json as _j
+            settings_raw = inbound.get("settings", "{}")
+            settings = _j.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
+            clients = settings.get("clients", [])
+            client_obj = next((c for c in clients if c.get("id") == client_uuid), {})
+            flow = client_obj.get("flow", "")
+            if flow:
+                params += f"&flow={flow}"
+            remark = inbound.get("remark", "VPN")
+            email = client_obj.get("email", "")
+            return f"vless://{client_uuid}@{address}:{port}?{params}#{remark}-{email}"
         elif protocol == "vmess":
             cfg = {"v":"2","ps":inbound.get("remark","VPN"),"add":address,"port":str(port),"id":client_uuid,"aid":"0","net":network,"type":"none","tls":security}
             return f"vmess://{base64.b64encode(json.dumps(cfg).encode()).decode()}"
