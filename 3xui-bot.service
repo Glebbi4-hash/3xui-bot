@@ -1,0 +1,17 @@
+[Unit]
+Description=3x-ui Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/3xui-bot
+EnvironmentFile=/opt/3xui-bot/.env
+ExecStart=/opt/3xui-bot/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
