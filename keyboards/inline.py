@@ -11,7 +11,8 @@ def main_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📋 Инбаунды",          callback_data="inbounds:list")
     builder.button(text="🖥 Статистика сервера", callback_data="server:stats")
-    builder.adjust(2)
+    builder.button(text="📊 Мониторинг",         callback_data="monitor:traffic")
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 
