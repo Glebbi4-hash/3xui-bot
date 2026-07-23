@@ -33,6 +33,8 @@ async def cmd_start_user(message: Message, state: FSMContext, config: Config):
         return
     builder = InlineKeyboardBuilder()
     builder.button(text="🔑 Запросить доступ", callback_data="user:request")
+    builder.button(text="📱 Инструкция", callback_data="user:instructions")
+    builder.adjust(1)
     await message.answer(
         "👋 Добро пожаловать!\n\nДля получения доступа к VPN нажмите кнопку ниже.",
         reply_markup=builder.as_markup(),
@@ -189,4 +191,70 @@ async def cb_req_expire(callback: CallbackQuery, config: Config):
     await callback.message.edit_text(
         callback.message.text + f"\n\nОдобрено #{inbound_id}\n{email}\nСрок: {expire_str}",
         reply_markup=None,
+    )
+
+
+@router.callback_query(F.data == "user:instructions")
+async def cb_instructions(callback: CallbackQuery):
+    await callback.answer()
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🤖 Android", callback_data="instr:android")
+    builder.button(text="🍎 iOS",     callback_data="instr:ios")
+    builder.adjust(2)
+    await callback.message.edit_text(
+        "📱 <b>Инструкция по установке Happ</b>\n\nВыберите вашу платформу:",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "instr:android")
+async def cb_instr_android(callback: CallbackQuery):
+    await callback.answer()
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬇️ Скачать Happ для Android",
+                   url="https://play.google.com/store/apps/details?id=com.happproxy")
+    builder.button(text="◀️ Назад", callback_data="user:instructions")
+    builder.adjust(1)
+    text = (
+        "🤖 <b>Установка Happ на Android</b>\n\n"
+        "<b>Шаг 1.</b> Скачайте Happ из Google Play\n\n"
+        "<b>Шаг 2.</b> Запросите доступ в боте\n"
+        "Нажмите 🔑 <b>Запросить доступ</b>\n\n"
+        "<b>Шаг 3.</b> После одобрения получите ссылку и QR\n\n"
+        "<b>Шаг 4.</b> Откройте Happ → нажмите <b>+</b>\n\n"
+        "<b>Шаг 5.</b> Выберите <b>Импорт из буфера обмена</b>\n"
+        "или <b>Сканировать QR-код</b>\n\n"
+        "<b>Шаг 6.</b> Вставьте ссылку → <b>Сохранить</b>\n\n"
+        "<b>Шаг 7.</b> Нажмите <b>Подключить</b> ✅\n\n"
+        "⚠️ Разрешите приложению создать VPN-соединение."
+    )
+    await callback.message.edit_text(
+        text, reply_markup=builder.as_markup(), parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "instr:ios")
+async def cb_instr_ios(callback: CallbackQuery):
+    await callback.answer()
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬇️ Скачать Happ для iOS",
+                   url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215")
+    builder.button(text="◀️ Назад", callback_data="user:instructions")
+    builder.adjust(1)
+    text = (
+        "🍎 <b>Установка Happ на iPhone / iPad</b>\n\n"
+        "<b>Шаг 1.</b> Скачайте Happ из App Store\n\n"
+        "<b>Шаг 2.</b> Запросите доступ в боте\n"
+        "Нажмите 🔑 <b>Запросить доступ</b>\n\n"
+        "<b>Шаг 3.</b> После одобрения получите ссылку и QR\n\n"
+        "<b>Шаг 4.</b> Откройте Happ → нажмите <b>+</b>\n\n"
+        "<b>Шаг 5.</b> Выберите <b>Импорт из буфера обмена</b>\n"
+        "или <b>Сканировать QR-код</b>\n\n"
+        "<b>Шаг 6.</b> Вставьте ссылку → <b>Сохранить</b>\n\n"
+        "<b>Шаг 7.</b> Нажмите <b>Подключить</b> ✅\n\n"
+        "⚠️ Разрешите приложению добавить VPN-конфигурацию."
+    )
+    await callback.message.edit_text(
+        text, reply_markup=builder.as_markup(), parse_mode="HTML"
     )
