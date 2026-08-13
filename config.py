@@ -26,6 +26,9 @@ class Config:
         default_factory=lambda: int(os.getenv("DEFAULT_TRAFFIC_GB", "0"))
     )
 
+    # API Token for 3x-ui v3.x
+    API_TOKEN: str = field(default_factory=lambda: os.getenv("API_TOKEN", ""))
+
     # Default expire days (0 = never)
     DEFAULT_EXPIRE_DAYS: int = field(
         default_factory=lambda: int(os.getenv("DEFAULT_EXPIRE_DAYS", "30"))

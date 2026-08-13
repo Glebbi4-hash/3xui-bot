@@ -6,18 +6,24 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
+
 class XUIClient:
-    def __init__(self, base_url: str, username: str, password: str):
+    def __init__(self, base_url: str, username: str, password: str, api_token: str = ""):
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
+        self.api_token = api_token
         self._session = None
 
     async def _get_session(self):
         if self._session is None or self._session.closed:
-            jar = aiohttp.CookieJar(unsafe=True)
             connector = aiohttp.TCPConnector(ssl=False)
-            self._session = aiohttp.ClientSession(cookie_jar=jar, connector=connector)
+            headers = {}
+            if self.api_token:
+                headers["Authorization"] = f"Bearer {self.api_token}"
+            self._session = aiohttp.ClientSession(
+                connector=connector, headers=headers
+            )
         return self._session
 
     async def close(self):
@@ -25,10 +31,15 @@ class XUIClient:
             await self._session.close()
 
     async def login(self):
+        if self.api_token:
+            return True
         session = await self._get_session()
         try:
-            async with session.post(f"{self.base_url}/login", data={"username": self.username, "password": self.password}) as resp:
-                result = await resp.json()
+            async with session.post(
+                f"{self.base_url}/login",
+                data={"username": self.username, "password": self.password}
+            ) as resp:
+                result = await resp.json(content_type=None)
                 if result.get("success"):
                     logger.info("3x-ui login successful")
                     return True
@@ -43,11 +54,6 @@ class XUIClient:
         url = f"{self.base_url}{path}"
         try:
             async with session.request(method, url, allow_redirects=True, **kwargs) as resp:
-                if resp.status == 401:
-                    if await self.login():
-                        async with session.request(method, url, allow_redirects=True, **kwargs) as r2:
-                            return await r2.json(content_type=None)
-                    return None
                 return await resp.json(content_type=None)
         except Exception as exc:
             logger.exception("request error [%s %s]: %s", method, path, exc)
@@ -71,14 +77,7 @@ class XUIClient:
             settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
         except Exception:
             return []
-        clients = settings.get("clients", [])
-        # Merge with clientStats for enable status
-        stats = {s["email"]: s for s in inbound.get("clientStats") or []}
-        for c in clients:
-            email = c.get("email", "")
-            if email in stats:
-                c["enable"] = stats[email].get("enable", c.get("enable", True))
-        return clients
+        return settings.get("clients", [])
 
     async def get_client_traffics(self, inbound_id):
         inbounds = await self.get_inbounds()
@@ -97,7 +96,6 @@ class XUIClient:
     async def add_client(self, inbound_id, email, traffic_gb=0, expire_days=0, tg_id=0):
         import json as _json
         client_id = str(uuid.uuid4())
-        # Get inbound to detect flow type
         inbounds = await self.get_inbounds()
         inbound = next((i for i in inbounds if i["id"] == inbound_id), None)
         stream_raw = (inbound or {}).get("streamSettings", "{}")
@@ -138,12 +136,11 @@ class XUIClient:
         return bool(result and result.get("success"))
 
     async def get_client_link(self, inbound_id, client_uuid):
-        # Use get_inbounds (list) as it contains full streamSettings
+        import json, base64
         inbounds = await self.get_inbounds()
         inbound = next((i for i in inbounds if i["id"] == inbound_id), None)
         if not inbound:
             return None
-        import json, base64
         protocol = inbound.get("protocol", "").lower()
         address = self.base_url.split("//")[-1].split(":")[0]
         port = inbound.get("port", 443)
@@ -161,9 +158,8 @@ class XUIClient:
                 sni = rs.get("serverName", "") or (reality.get("serverNames", [""])[0])
                 sid = (reality.get("shortIds", [""])[-1])
                 params += f"&pbk={pbk}&fp={fp}&sni={sni}&sid={sid}&spx=%2F"
-            import json as _j
             settings_raw = inbound.get("settings", "{}")
-            settings = _j.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
+            settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
             clients = settings.get("clients", [])
             client_obj = next((c for c in clients if c.get("id") == client_uuid), {})
             flow = client_obj.get("flow", "")

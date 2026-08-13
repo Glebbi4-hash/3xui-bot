@@ -19,7 +19,7 @@ class RequestStates(StatesGroup):
 
 
 def _xui(config):
-    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD)
+    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD, getattr(config, "API_TOKEN", ""))
 
 
 @router.message(CommandStart())

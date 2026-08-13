@@ -22,7 +22,7 @@ router.callback_query.middleware(AdminMiddleware())
 
 
 def _xui(config: Config) -> XUIClient:
-    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD)
+    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD, getattr(config, "API_TOKEN", ""))
 
 
 async def _collect_system_stats() -> dict:

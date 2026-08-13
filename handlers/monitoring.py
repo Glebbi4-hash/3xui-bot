@@ -13,7 +13,7 @@ router.callback_query.middleware(AdminMiddleware())
 
 
 def _xui(config):
-    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD)
+    return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD, getattr(config, "API_TOKEN", ""))
 
 
 @router.callback_query(F.data == "monitor:traffic")
