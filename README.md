@@ -84,6 +84,7 @@ journalctl -u 3xui-bot -f
 
 ## Структура проекта
 
+```
 3xui-bot/
 ├── bot.py                   # Точка входа
 ├── config.py                # Настройки из .env
@@ -104,6 +105,7 @@ journalctl -u 3xui-bot -f
 │   └── inline.py            # Все inline-клавиатуры
 └── utils/
     └── helpers.py           # Middleware, форматирование
+```
 
 ## Требования к панели
 
