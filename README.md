@@ -2,6 +2,13 @@
 
 Telegram-бот для управления клиентами панели [3x-ui](https://github.com/MHSanaei/3x-ui) через inline-меню.
 
+## Совместимость
+
+| Версия 3x-ui | Статус |
+|---|---|
+| 2.x | ✅ Поддерживается |
+| 3.x (3.6.0+) | ✅ Поддерживается (Bearer token) |
+
 ## Возможности
 
 ### Для администратора
@@ -31,15 +38,14 @@ Telegram-бот для управления клиентами панели [3x-
 
 ### 1. Получить токен бота
 
-Напишите [@BotFather](https://t.me/BotFather) → `/newbot` → скопируйте токен.
+Напишите @BotFather /newbot и скопируйте токен.
 
 ### 2. Узнать свой Telegram ID
 
-Напишите [@userinfobot](https://t.me/userinfobot) — он пришлёт ваш числовой ID.
+Напишите @userinfobot — он пришлёт ваш числовой ID.
 
 ### 3. Развернуть на сервере
 
-```bash
 git clone https://github.com/Glebbi4-hash/3xui-bot.git /opt/3xui-bot
 cd /opt/3xui-bot
 python3 -m venv venv
@@ -47,35 +53,37 @@ source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 nano .env
-```
 
-### 4. Заполнить .env
+### 4. Получить API токен для 3x-ui v3.x
 
-```env
+1. Зайдите в панель 3x-ui
+2. Перейдите в Settings - API Tokens
+3. Нажмите Create Token
+4. Скопируйте токен и вставьте в .env
+
+### 5. Заполнить .env
+
 BOT_TOKEN=1234567890:AAxxxx...
 ADMIN_IDS=123456789
 
 PANEL_URL=https://your-domain.com:PORT/WEBPATH
 PANEL_USERNAME=admin
 PANEL_PASSWORD=yourpassword
+API_TOKEN=ваш_api_токен_из_панели
 
 DEFAULT_TRAFFIC_GB=0
 DEFAULT_EXPIRE_DAYS=30
-```
 
-### 5. Запустить через systemd
+### 6. Запустить через systemd
 
-```bash
 cp 3xui-bot.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now 3xui-bot
 systemctl status 3xui-bot
 journalctl -u 3xui-bot -f
-```
 
 ## Структура проекта
 
-```
 3xui-bot/
 ├── bot.py                   # Точка входа
 ├── config.py                # Настройки из .env
@@ -96,13 +104,12 @@ journalctl -u 3xui-bot -f
 │   └── inline.py            # Все inline-клавиатуры
 └── utils/
     └── helpers.py           # Middleware, форматирование
-```
 
 ## Требования к панели
 
-- 3x-ui версии 2.x и выше (протестировано на 26.x)
+- 3x-ui версии 2.x или 3.x (протестировано на 2.x и 3.6.0)
 - SSL включён, доступ по HTTPS
-- Пользователь с правами на создание/удаление клиентов
+- Для v3.x: API токен из Settings - API Tokens
 
 ## Безопасность
 
