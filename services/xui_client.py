@@ -103,8 +103,8 @@ class XUIClient:
         security = stream.get("security", "")
         flow = "xtls-rprx-vision" if security == "reality" else ""
         payload = {
-            "id": inbound_id,
-            "settings": _json.dumps({"clients": [{
+            "inboundIds": [inbound_id],
+            "client": {
                 "id": client_id,
                 "email": email,
                 "enable": True,
@@ -113,26 +113,43 @@ class XUIClient:
                 "limitIp": 0,
                 "flow": flow,
                 "subId": "",
-                "tgId": str(tg_id) if tg_id else ""
-            }]})
+                "tgId": int(tg_id) if tg_id else 0
+            }
         }
-        result = await self._request("POST", "/panel/api/inbounds/addClient", json=payload)
+        result = await self._request("POST", "/panel/api/clients/add", json=payload)
         return client_id if result and result.get("success") else None
 
     async def update_client(self, inbound_id, client_uuid, **fields):
-        payload = {"id": inbound_id, "settings": {"clients": [{"id": client_uuid, **fields}]}}
-        result = await self._request("POST", f"/panel/api/inbounds/updateClient/{client_uuid}", json=payload)
+        clients = await self.get_clients(inbound_id)
+        client = next((c for c in clients if c.get("id") == client_uuid), {})
+        email = client.get("email", "")
+        payload = {
+            "id": client_uuid,
+            "email": email,
+            "enable": client.get("enable", True),
+            "expiryTime": client.get("expiryTime", 0),
+            "totalGB": client.get("totalGB", 0),
+            "limitIp": client.get("limitIp", 0),
+            "flow": client.get("flow", ""),
+            "subId": client.get("subId", ""),
+            "tgId": int(client.get("tgId", 0)) if client.get("tgId") else 0,
+            **fields
+        }
+        result = await self._request("POST", f"/panel/api/clients/update/{email}", json=payload)
         return bool(result and result.get("success"))
 
     async def delete_client(self, inbound_id, client_uuid):
-        result = await self._request("POST", f"/panel/api/inbounds/{inbound_id}/delClient/{client_uuid}")
+        clients = await self.get_clients(inbound_id)
+        client = next((c for c in clients if c.get("id") == client_uuid), None)
+        email = client.get("email") if client else client_uuid
+        result = await self._request("POST", f"/panel/api/clients/del/{email}")
         return bool(result and result.get("success"))
 
     async def toggle_client(self, inbound_id, client_uuid, enable):
         return await self.update_client(inbound_id, client_uuid, enable=enable)
 
     async def reset_client_traffic(self, inbound_id, email):
-        result = await self._request("POST", f"/panel/api/inbounds/{inbound_id}/resetClientTraffic/{email}")
+        result = await self._request("POST", f"/panel/api/clients/resetTraffic/{email}")
         return bool(result and result.get("success"))
 
     async def get_client_link(self, inbound_id, client_uuid):

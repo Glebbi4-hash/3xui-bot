@@ -312,3 +312,93 @@ async def cb_qr_back(callback: CallbackQuery, config: Config):
         text, reply_markup=ca(inbound_id, idx, client_id, email, enabled), parse_mode="HTML"
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cl:s:"))
+async def cb_subscription(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    inbound_id, idx = int(parts[2]), int(parts[3])
+    xui = _xui(config)
+    await xui.login()
+    client, _ = await _get_client(xui, inbound_id, idx)
+    await xui.close()
+    if not client:
+        await callback.answer("Клиент не найден", show_alert=True)
+        return
+    sub_id = client.get("subId", "")
+    email = client.get("email", "")
+    from keyboards import back_button
+    back_cb = f"cl:v:{inbound_id}:{idx}"
+    if not sub_id or not config.SUB_URL:
+        await callback.message.edit_text(
+            "Подписка недоступна — subId или SUB_URL не заполнены.",
+            reply_markup=back_button(back_cb, "Назад")
+        )
+        return
+    link = f"{config.SUB_URL}{sub_id}"
+    text = f"Подписка {email}\n\n{link}\n\nДобавьте в Happ или любой клиент поддерживающий подписки."
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_button(back_cb, "Назад"),
+    )
+
+
+@router.callback_query(F.data.startswith("cl:sq:"))
+async def cb_subscription_qr(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    inbound_id, idx = int(parts[2]), int(parts[3])
+    xui = _xui(config)
+    await xui.login()
+    client, _ = await _get_client(xui, inbound_id, idx)
+    await xui.close()
+    if not client:
+        await callback.answer("Клиент не найден", show_alert=True)
+        return
+    sub_id = client.get("subId", "")
+    email = client.get("email", "")
+    if not sub_id or not config.SUB_URL:
+        await callback.answer("Подписка недоступна", show_alert=True)
+        return
+    link = f"{config.SUB_URL}{sub_id}"
+    import qrcode, io
+    from aiogram.types import BufferedInputFile
+    from keyboards import back_button
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(link)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    back_cb = f"cl:qback:{inbound_id}:{idx}"
+    await callback.message.answer_photo(
+        photo=BufferedInputFile(buf.read(), filename="sub_qr.png"),
+        caption=f"QR подписки {email}\n\n{link}",
+        reply_markup=back_button(back_cb, "Назад к клиенту"),
+    )
+    await callback.message.delete()
+
+
+@router.callback_query(F.data.startswith("cl:b:"))
+async def cb_block(callback: CallbackQuery, config: Config):
+    parts = callback.data.split(":")
+    inbound_id, idx = int(parts[2]), int(parts[3])
+    xui = _xui(config)
+    await xui.login()
+    client, _ = await _get_client(xui, inbound_id, idx)
+    if not client:
+        await xui.close()
+        await callback.answer("Клиент не найден", show_alert=True)
+        return
+    if not client.get("enable", True):
+        await xui.close()
+        await callback.answer("Клиент уже заблокирован", show_alert=True)
+        return
+    ok = await xui.toggle_client(inbound_id, client["id"], False)
+    await xui.close()
+    await callback.answer("🚫 Клиент заблокирован", show_alert=True)
+    if ok:
+        callback.data = f"cl:v:{inbound_id}:{idx}"
+        await cb_client_view(callback, config)

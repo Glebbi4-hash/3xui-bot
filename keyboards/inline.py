@@ -85,13 +85,15 @@ def clients_list(clients: List[Dict], stats: Dict, inbound_id: int) -> InlineKey
 def client_actions(inbound_id: int, idx: int, client_id: str, email: str, enabled: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "🔴 Отключить" if enabled else "🟢 Включить"
+    builder.button(text="📋 Подписка",          callback_data=f"cl:s:{inbound_id}:{idx}")
+    builder.button(text="📱 QR подписки",       callback_data=f"cl:sq:{inbound_id}:{idx}")
+    builder.button(text="🔗 Ссылка",            callback_data=f"cl:l:{inbound_id}:{idx}")
+    builder.button(text="📱 QR ссылки",         callback_data=f"cl:q:{inbound_id}:{idx}")
     builder.button(text=toggle_text,            callback_data=f"cl:t:{inbound_id}:{idx}")
     builder.button(text="🔄 Сбросить трафик",   callback_data=f"cl:r:{inbound_id}:{idx}")
-    builder.button(text="🔗 Ссылка",            callback_data=f"cl:l:{inbound_id}:{idx}")
-    builder.button(text="📱 QR-код",            callback_data=f"cl:q:{inbound_id}:{idx}")
     builder.button(text="🗑 Удалить",           callback_data=f"cl:d:{inbound_id}:{idx}")
     builder.button(text="◀️ К списку",          callback_data=f"clients:list:{inbound_id}")
-    builder.adjust(2, 2, 1, 1)
+    builder.adjust(2, 2, 1, 1, 1, 1)
     return builder.as_markup()
 
 

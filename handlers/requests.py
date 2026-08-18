@@ -29,6 +29,7 @@ async def cmd_start_user(message: Message, state: FSMContext, config: Config):
         await message.answer(
             "👋 <b>3x-ui Manager</b>\n\nВыберите действие:",
             reply_markup=main_menu(),
+            parse_mode="HTML",
         )
         return
     builder = InlineKeyboardBuilder()
