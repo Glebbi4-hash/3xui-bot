@@ -5,4 +5,5 @@ class AddClientStates(StatesGroup):
     waiting_inbound  = State()   # выбор инбаунда перед созданием
     waiting_email    = State()
     waiting_traffic  = State()
+    waiting_devices  = State()
     waiting_expire   = State()

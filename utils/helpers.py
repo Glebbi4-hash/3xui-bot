@@ -22,6 +22,10 @@ class AdminMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             user = event.from_user
 
+        # Public callbacks allowed for non-admins
+        public_callbacks = ("user:request", "user:instructions", "instr:android", "instr:ios")
+        if isinstance(event, CallbackQuery) and event.data in public_callbacks:
+            return await handler(event, data)
         if user and user.id not in config.ADMIN_IDS:
             if isinstance(event, Message):
                 await event.answer("⛔️ Доступ запрещён.")

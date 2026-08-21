@@ -12,7 +12,9 @@ def main_menu() -> InlineKeyboardMarkup:
     builder.button(text="📋 Инбаунды",          callback_data="inbounds:list")
     builder.button(text="🖥 Статистика сервера", callback_data="server:stats")
     builder.button(text="📊 Мониторинг",         callback_data="monitor:traffic")
-    builder.adjust(2, 1)
+    builder.button(text="📁 Бэкап",             callback_data="backup:menu")
+    builder.button(text="🔄 Перезапуск",          callback_data="restart:menu")
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
@@ -41,7 +43,9 @@ def inbound_actions(inbound_id: int, remark: str) -> InlineKeyboardMarkup:
     builder.button(text="👥 Клиенты",        callback_data=f"clients:list:{inbound_id}")
     builder.button(text="➕ Добавить",        callback_data=f"clients:add:{inbound_id}")
     builder.button(text="◀️ К инбаундам",    callback_data="inbounds:list")
-    builder.adjust(2, 1)
+    builder.button(text="📁 Бэкап",             callback_data="backup:menu")
+    builder.button(text="🔄 Перезапуск",          callback_data="restart:menu")
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
@@ -118,4 +122,32 @@ def cancel_button(back: str = "menu:main") -> InlineKeyboardMarkup:
 def back_button(target: str, label: str = "◀️ Назад") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=label, callback_data=target)
+    return builder.as_markup()
+
+
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+def admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="📋 Инбаунды"),
+                KeyboardButton(text="🖥 Статистика"),
+            ],
+            [
+                KeyboardButton(text="📊 Мониторинг"),
+                KeyboardButton(text="📁 Бэкап"),
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def backup_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💾 Создать бэкап",    callback_data="backup:create")
+    builder.button(text="♻️ Восстановить",      callback_data="backup:restore")
+    builder.button(text="◀️ Назад",            callback_data="menu:main")
+    builder.adjust(2, 1)
     return builder.as_markup()

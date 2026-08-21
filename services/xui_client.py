@@ -93,7 +93,7 @@ class XUIClient:
                 result[s["uuid"]] = s
         return result
 
-    async def add_client(self, inbound_id, email, traffic_gb=0, expire_days=0, tg_id=0):
+    async def add_client(self, inbound_id, email, traffic_gb=0, expire_days=0, tg_id=0, limit_ip=0):
         import json as _json
         client_id = str(uuid.uuid4())
         inbounds = await self.get_inbounds()
@@ -110,7 +110,7 @@ class XUIClient:
                 "enable": True,
                 "expiryTime": int((time.time() + expire_days * 86400) * 1000) if expire_days else 0,
                 "totalGB": traffic_gb * 1024**3 if traffic_gb else 0,
-                "limitIp": 0,
+                "limitIp": limit_ip,
                 "flow": flow,
                 "subId": "",
                 "tgId": int(tg_id) if tg_id else 0

@@ -16,6 +16,7 @@ router = Router()
 
 class RequestStates(StatesGroup):
     waiting_name = State()
+    waiting_devices = State()
 
 
 def _xui(config):
@@ -48,7 +49,7 @@ async def cb_user_request(callback: CallbackQuery, state: FSMContext, config: Co
         return
     await callback.answer()
     await state.set_state(RequestStates.waiting_name)
-    await callback.message.edit_text("✏️ Введите ваше имя (как к вам обращаться):")
+    await callback.message.edit_text("✏️ Как вас зовут?\n\n""Введите имя латинскими буквами — так администратор сможет вас идентифицировать.\n""Пример: Ivan, Anna_P, John_Smith")
 
 
 @router.message(RequestStates.waiting_name)
@@ -57,26 +58,47 @@ async def fsm_request_name(message: Message, state: FSMContext, config: Config):
         return
     name = message.text.strip()
     if not name:
-        await message.answer("❌ Имя не может быть пустым:")
+        await message.answer("Имя не может быть пустым:")
         return
+    await state.update_data(name=name)
+    await state.set_state(RequestStates.waiting_devices)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="1 устройство",  callback_data="req:devices_req:1")
+    builder.button(text="2 устройства",  callback_data="req:devices_req:2")
+    builder.button(text="3 устройства",  callback_data="req:devices_req:3")
+    builder.adjust(3)
+    await message.answer(
+        "Сколько устройств хотите подключить?",
+        reply_markup=builder.as_markup(),
+    )
+
+
+
+@router.callback_query(F.data.startswith("req:devices_req:"))
+async def cb_devices_req(callback: CallbackQuery, state: FSMContext, config: Config):
+    await callback.answer()
+    devices = int(callback.data.split(":")[2])
+    data = await state.get_data()
     await state.clear()
-    user = message.from_user
+    name = data.get("name", "Unknown")
+    user = callback.from_user
     username = f"@{user.username}" if user.username else "нет username"
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Одобрить", callback_data=f"req:approve:{user.id}:{name[:20]}")
-    builder.button(text="❌ Отклонить", callback_data=f"req:deny:{user.id}")
+    builder.button(text="Одобрить", callback_data=f"req:approve:{user.id}:{name[:20]}:{devices}")
+    builder.button(text="Отклонить", callback_data=f"req:deny:{user.id}")
     builder.adjust(2)
     for admin_id in config.ADMIN_IDS:
         try:
-            await message.bot.send_message(
+            await callback.bot.send_message(
                 admin_id,
-                f"🔔 <b>Новая заявка на доступ</b>\n\n👤 Имя: <b>{name}</b>\n🆔 TG ID: <code>{user.id}</code>\n📎 Username: {username}",
+                f"Новая заявка на доступ\n\nИмя: {name}\nTG ID: {user.id}\nUsername: {username}\nЗапрошено устройств: {devices}",
                 reply_markup=builder.as_markup(),
             )
         except Exception as e:
             logger.error("Failed to notify admin %s: %s", admin_id, e)
-    await message.answer("✅ Заявка отправлена! Ожидайте подтверждения от администратора.")
-
+    await callback.message.edit_text(
+        "Заявка отправлена! Ожидайте подтверждения от администратора."
+    )
 @router.callback_query(F.data.startswith("req:deny:"))
 async def cb_req_deny(callback: CallbackQuery):
     user_id = int(callback.data.split(":")[2])
@@ -97,6 +119,7 @@ async def cb_req_approve(callback: CallbackQuery, config: Config):
     parts = callback.data.split(":")
     user_id = int(parts[2])
     name = parts[3]
+    requested_devices = int(parts[4]) if len(parts) > 4 else 3
     xui = _xui(config)
     await xui.login()
     inbounds = await xui.get_inbounds()
@@ -109,42 +132,145 @@ async def cb_req_approve(callback: CallbackQuery, config: Config):
         remark = ib.get("remark") or f"#{ib['id']}"
         builder.button(
             text=f"#{ib['id']} {remark} [{proto}]",
-            callback_data=f"req:inbound:{user_id}:{name[:20]}:{ib['id']}",
+            callback_data=f"req:inbound:sub:{user_id}:{name[:20]}:{ib['id']}:{requested_devices}",
+        )
+    builder.button(text="Отмена", callback_data=f"req:deny:{user_id}")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        callback.message.text + f"\n\nВыберите инбаунд (запрошено устройств: {requested_devices}):",
+        reply_markup=builder.as_markup(),
+    )
+
+@router.callback_query(F.data.startswith("req:type:sub:"))
+async def cb_req_type_sub(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    user_id = int(parts[3])
+    name = parts[4]
+    builder = InlineKeyboardBuilder()
+    builder.button(text="1️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:1")
+    builder.button(text="2️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:2")
+    builder.button(text="3️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:3")
+    builder.button(text="5️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:5")
+    builder.button(text="∞ Без лимита", callback_data=f"req:devices:{user_id}:{name[:20]}:0")
+    builder.button(text="❌ Отмена",    callback_data=f"req:deny:{user_id}")
+    builder.adjust(5, 1)
+    await callback.message.edit_text(
+        callback.message.text + "\n\n📱 <b>Количество устройств:</b>",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML",
+    )
+
+@router.callback_query(F.data.startswith("req:type:acc:"))
+async def cb_req_type_acc(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    user_id = int(parts[3])
+    name = parts[4]
+    xui = _xui(config)
+    await xui.login()
+    inbounds = await xui.get_inbounds()
+    await xui.close()
+    builder = InlineKeyboardBuilder()
+    for ib in inbounds:
+        if not ib.get("enable"):
+            continue
+        proto = ib.get("protocol", "?").upper()
+        remark = ib.get("remark") or f"#{ib['id']}"
+        builder.button(
+            text=f"#{ib['id']} {remark} [{proto}]",
+            callback_data=f"req:inbound:acc:{user_id}:{name[:20]}:{ib['id']}",
         )
     builder.button(text="❌ Отмена", callback_data=f"req:deny:{user_id}")
     builder.adjust(1)
     await callback.message.edit_text(
-        callback.message.text + "\n\n✅ <b>Выберите инбаунд:</b>",
+        callback.message.text + "\n\n🔑 <b>Выберите инбаунд:</b>",
         reply_markup=builder.as_markup(),
+        parse_mode="HTML",
+    )
+
+@router.callback_query(F.data.startswith("req:devices:"))
+async def cb_req_devices(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    user_id = int(parts[2])
+    name = parts[3]
+    limit_ip = int(parts[4])
+    xui = _xui(config)
+    await xui.login()
+    inbounds = await xui.get_inbounds()
+    await xui.close()
+    builder = InlineKeyboardBuilder()
+    for ib in inbounds:
+        if not ib.get("enable"):
+            continue
+        proto = ib.get("protocol", "?").upper()
+        remark = ib.get("remark") or f"#{ib['id']}"
+        builder.button(
+            text=f"#{ib['id']} {remark} [{proto}]",
+            callback_data=f"req:inbound:sub:{user_id}:{name[:20]}:{ib['id']}:{limit_ip}",
+        )
+    builder.button(text="❌ Отмена", callback_data=f"req:deny:{user_id}")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        callback.message.text + "\n\n📋 <b>Выберите инбаунд:</b>",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML",
     )
 
 @router.callback_query(F.data.startswith("req:inbound:"))
 async def cb_req_inbound(callback: CallbackQuery, config: Config):
     await callback.answer()
     parts = callback.data.split(":")
-    user_id = int(parts[2])
-    name = parts[3]
-    inbound_id = int(parts[4])
+    access_type = parts[2]
+    user_id = int(parts[3])
+    name = parts[4]
+    inbound_id = int(parts[5])
+    requested_devices = int(parts[6]) if len(parts) > 6 else 3
     builder = InlineKeyboardBuilder()
-    builder.button(text="7 дней",    callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:7")
-    builder.button(text="30 дней",   callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:30")
-    builder.button(text="90 дней",   callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:90")
-    builder.button(text="Бессрочно", callback_data=f"req:expire:{user_id}:{name}:{inbound_id}:0")
+    builder.button(text="7 дней",    callback_data=f"req:expire:{access_type}:{user_id}:{name}:{inbound_id}:7:{requested_devices}")
+    builder.button(text="30 дней",   callback_data=f"req:expire:{access_type}:{user_id}:{name}:{inbound_id}:30:{requested_devices}")
+    builder.button(text="90 дней",   callback_data=f"req:expire:{access_type}:{user_id}:{name}:{inbound_id}:90:{requested_devices}")
+    builder.button(text="Бессрочно", callback_data=f"req:expire:{access_type}:{user_id}:{name}:{inbound_id}:0:{requested_devices}")
     builder.adjust(2, 2)
     await callback.message.edit_text(
         callback.message.text + "\n\nВыберите срок доступа:",
         reply_markup=builder.as_markup(),
     )
 
-
 @router.callback_query(F.data.startswith("req:expire:"))
 async def cb_req_expire(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    access_type = parts[2]
+    user_id = int(parts[3])
+    name = parts[4]
+    inbound_id = int(parts[5])
+    expire_days = int(parts[6])
+    requested_devices = int(parts[7]) if len(parts) > 7 else 3
+    builder = InlineKeyboardBuilder()
+    builder.button(text=f"1 уст.", callback_data=f"req:create:{user_id}:{name}:{inbound_id}:{expire_days}:1")
+    builder.button(text=f"2 уст.", callback_data=f"req:create:{user_id}:{name}:{inbound_id}:{expire_days}:2")
+    builder.button(text=f"3 уст.", callback_data=f"req:create:{user_id}:{name}:{inbound_id}:{expire_days}:3")
+    builder.button(text=f"5 уст.", callback_data=f"req:create:{user_id}:{name}:{inbound_id}:{expire_days}:5")
+    builder.button(text="Без лимита", callback_data=f"req:create:{user_id}:{name}:{inbound_id}:{expire_days}:0")
+    builder.adjust(3, 2)
+    expire_str = f"{expire_days} дн." if expire_days else "Бессрочно"
+    await callback.message.edit_text(
+        callback.message.text + f"\n\nСрок: {expire_str}\nКлиент запросил: {requested_devices} уст.\n\nВыберите количество устройств:",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("req:create:"))
+async def cb_req_create(callback: CallbackQuery, config: Config):
     await callback.answer()
     parts = callback.data.split(":")
     user_id = int(parts[2])
     name = parts[3]
     inbound_id = int(parts[4])
     expire_days = int(parts[5])
+    limit_ip = int(parts[6])
     safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
     email = f"{safe_name}_{user_id}"
     xui = _xui(config)
@@ -154,8 +280,8 @@ async def cb_req_expire(callback: CallbackQuery, config: Config):
         traffic_gb=config.DEFAULT_TRAFFIC_GB,
         expire_days=expire_days,
         tg_id=user_id,
+        limit_ip=limit_ip,
     )
-    link = await xui.get_client_link(inbound_id, client_uuid) if client_uuid else None
     await xui.close()
     if not client_uuid:
         await callback.message.edit_text(
@@ -164,11 +290,19 @@ async def cb_req_expire(callback: CallbackQuery, config: Config):
         )
         return
     expire_str = f"{expire_days} дн." if expire_days else "Бессрочно"
-    if link:
+    limit_str = f"{limit_ip} устройства" if limit_ip else "Без лимита"
+    xui2 = _xui(config)
+    await xui2.login()
+    clients = await xui2.get_clients(inbound_id)
+    await xui2.close()
+    client = next((c for c in clients if c.get("id") == client_uuid), {})
+    sub_id = client.get("subId", "")
+    sub_link = f"{config.SUB_URL}{sub_id}" if sub_id and config.SUB_URL else None
+    if sub_link:
         import qrcode, io
         from aiogram.types import BufferedInputFile
         qr = qrcode.QRCode(box_size=10, border=2)
-        qr.add_data(link)
+        qr.add_data(sub_link)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         buf = io.BytesIO()
@@ -177,23 +311,23 @@ async def cb_req_expire(callback: CallbackQuery, config: Config):
         try:
             await callback.bot.send_photo(
                 user_id,
-                photo=BufferedInputFile(buf.read(), filename="qr.png"),
-                caption=f"Dostup odobren!\nSrok: {expire_str}\n\nVLESS:\n{link}",
+                photo=BufferedInputFile(buf.read(), filename="sub_qr.png"),
+                caption=(
+                    f"✅ Доступ одобрен!\n\n"
+                    f"⏳ Срок: {expire_str}\n"
+                    f"📱 По данной подписке вы можете подключить {limit_str}\n\n"
+                    f"📋 Ссылка подписки:\n{sub_link}\n\n"
+                    f"Как добавить в Happ:\n"
+                    f"Нажмите + → Импорт из буфера обмена\n"
+                    f"или отсканируйте QR-код"
+                ),
             )
         except Exception as e:
             logger.error("Failed to send to user %s: %s", user_id, e)
-    else:
-        try:
-            await callback.bot.send_message(
-                user_id, f"Dostup odobren! Srok: {expire_str}\nUUID: {client_uuid}",
-            )
-        except Exception as e:
-            logger.error("Failed to notify user %s: %s", user_id, e)
     await callback.message.edit_text(
-        callback.message.text + f"\n\nОдобрено #{inbound_id}\n{email}\nСрок: {expire_str}",
+        callback.message.text + f"\n\n✅ Одобрено\n📧 {email}\n⏳ {expire_str}\n📱 {limit_str}",
         reply_markup=None,
     )
-
 
 @router.callback_query(F.data == "user:instructions")
 async def cb_instructions(callback: CallbackQuery):
