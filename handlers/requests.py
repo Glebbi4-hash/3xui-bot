@@ -35,6 +35,7 @@ async def cmd_start_user(message: Message, state: FSMContext, config: Config):
         return
     builder = InlineKeyboardBuilder()
     builder.button(text="🔑 Запросить доступ", callback_data="user:request")
+    builder.button(text="📋 Мои активные подписки", callback_data="user:subscriptions")
     builder.button(text="📱 Инструкция", callback_data="user:instructions")
     builder.adjust(1)
     await message.answer(
@@ -49,7 +50,14 @@ async def cb_user_request(callback: CallbackQuery, state: FSMContext, config: Co
         return
     await callback.answer()
     await state.set_state(RequestStates.waiting_name)
-    await callback.message.edit_text("✏️ Как вас зовут?\n\n""Введите имя латинскими буквами — так администратор сможет вас идентифицировать.\n""Пример: Ivan, Anna_P, John_Smith")
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="◀️ Назад", callback_data="user:back")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        "✏️ Как вас зовут?\n\nВведите имя латинскими буквами — так администратор сможет вас идентифицировать.\nПример: Ivan, Anna_P, John_Smith",
+        reply_markup=builder.as_markup()
+    )
 
 
 @router.message(RequestStates.waiting_name)
@@ -134,7 +142,7 @@ async def cb_req_approve(callback: CallbackQuery, config: Config):
             text=f"#{ib['id']} {remark} [{proto}]",
             callback_data=f"req:inbound:sub:{user_id}:{name[:20]}:{ib['id']}:{requested_devices}",
         )
-    builder.button(text="Отмена", callback_data=f"req:deny:{user_id}")
+    builder.button(text="◀️ Назад", callback_data=f"req:deny:{user_id}")
     builder.adjust(1)
     await callback.message.edit_text(
         callback.message.text + f"\n\nВыберите инбаунд (запрошено устройств: {requested_devices}):",
@@ -153,7 +161,7 @@ async def cb_req_type_sub(callback: CallbackQuery, config: Config):
     builder.button(text="3️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:3")
     builder.button(text="5️⃣",          callback_data=f"req:devices:{user_id}:{name[:20]}:5")
     builder.button(text="∞ Без лимита", callback_data=f"req:devices:{user_id}:{name[:20]}:0")
-    builder.button(text="❌ Отмена",    callback_data=f"req:deny:{user_id}")
+    builder.button(text="◀️ Назад",    callback_data=f"req:deny:{user_id}")
     builder.adjust(5, 1)
     await callback.message.edit_text(
         callback.message.text + "\n\n📱 <b>Количество устройств:</b>",
@@ -181,7 +189,7 @@ async def cb_req_type_acc(callback: CallbackQuery, config: Config):
             text=f"#{ib['id']} {remark} [{proto}]",
             callback_data=f"req:inbound:acc:{user_id}:{name[:20]}:{ib['id']}",
         )
-    builder.button(text="❌ Отмена", callback_data=f"req:deny:{user_id}")
+    builder.button(text="◀️ Назад", callback_data=f"req:deny:{user_id}")
     builder.adjust(1)
     await callback.message.edit_text(
         callback.message.text + "\n\n🔑 <b>Выберите инбаунд:</b>",
@@ -210,7 +218,7 @@ async def cb_req_devices(callback: CallbackQuery, config: Config):
             text=f"#{ib['id']} {remark} [{proto}]",
             callback_data=f"req:inbound:sub:{user_id}:{name[:20]}:{ib['id']}:{limit_ip}",
         )
-    builder.button(text="❌ Отмена", callback_data=f"req:deny:{user_id}")
+    builder.button(text="◀️ Назад", callback_data=f"req:deny:{user_id}")
     builder.adjust(1)
     await callback.message.edit_text(
         callback.message.text + "\n\n📋 <b>Выберите инбаунд:</b>",
@@ -319,7 +327,8 @@ async def cb_req_create(callback: CallbackQuery, config: Config):
                     f"📋 Ссылка подписки:\n{sub_link}\n\n"
                     f"Как добавить в Happ:\n"
                     f"Нажмите + → Импорт из буфера обмена\n"
-                    f"или отсканируйте QR-код"
+                    f"или отсканируйте QR-код\n\n"
+                    f"Перейдите в Мои активные подписки для управления подпиской"
                 ),
             )
         except Exception as e:
@@ -335,7 +344,8 @@ async def cb_instructions(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🤖 Android", callback_data="instr:android")
     builder.button(text="🍎 iOS",     callback_data="instr:ios")
-    builder.adjust(2)
+    builder.button(text="◀️ Назад",   callback_data="user:back")
+    builder.adjust(2, 1)
     await callback.message.edit_text(
         "📱 <b>Инструкция по установке Happ</b>\n\nВыберите вашу платформу:",
         reply_markup=builder.as_markup(),
@@ -393,3 +403,356 @@ async def cb_instr_ios(callback: CallbackQuery):
     await callback.message.edit_text(
         text, reply_markup=builder.as_markup(), parse_mode="HTML"
     )
+
+
+@router.callback_query(F.data.startswith("user:sub_link"))
+async def cb_user_sub_link(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    client_uuid = parts[2] if len(parts) > 2 else None
+    client, ib = await _get_user_client(callback.from_user.id, config)
+    if client_uuid:
+        import json
+        xui = _xui(config)
+        await xui.login()
+        inbounds = await xui.get_inbounds()
+        await xui.close()
+        for ib2 in inbounds:
+            settings = json.loads(ib2.get("settings","{}")) if isinstance(ib2.get("settings","{}"), str) else ib2.get("settings",{})
+            for c in settings.get("clients",[]):
+                if c.get("id") == client_uuid:
+                    client = c
+                    break
+    if not client:
+        await callback.answer("Подписка не найдена", show_alert=True)
+        return
+    sub_id = client.get("subId", "")
+    sub_link = f"{config.SUB_URL}{sub_id}" if sub_id and config.SUB_URL else None
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="◀️ Назад", callback_data="user:subscriptions")
+    if sub_link:
+        await callback.message.edit_text(
+            f"Ссылка подписки:\n\n{sub_link}\n\nВставьте в Happ: + → Импорт из буфера обмена",
+            reply_markup=builder.as_markup()
+        )
+    else:
+        await callback.message.edit_text("Ссылка подписки недоступна.", reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("user:sub_qr"))
+async def cb_user_sub_qr(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    client_uuid = parts[2] if len(parts) > 2 else None
+    client, ib = await _get_user_client(callback.from_user.id, config)
+    if client_uuid:
+        import json
+        xui = _xui(config)
+        await xui.login()
+        inbounds = await xui.get_inbounds()
+        await xui.close()
+        for ib2 in inbounds:
+            settings = json.loads(ib2.get("settings","{}")) if isinstance(ib2.get("settings","{}"), str) else ib2.get("settings",{})
+            for c in settings.get("clients",[]):
+                if c.get("id") == client_uuid:
+                    client = c
+                    break
+    if not client:
+        await callback.answer("Подписка не найдена", show_alert=True)
+        return
+    sub_id = client.get("subId", "")
+    sub_link = f"{config.SUB_URL}{sub_id}" if sub_id and config.SUB_URL else None
+    if not sub_link:
+        await callback.answer("Ссылка подписки недоступна", show_alert=True)
+        return
+    import qrcode, io
+    from aiogram.types import BufferedInputFile
+    from keyboards import back_button
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(sub_link)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    await callback.message.answer_photo(
+        photo=BufferedInputFile(buf.read(), filename="sub_qr.png"),
+        caption=f"QR подписки\n\n{sub_link}",
+        reply_markup=back_button("user:subscriptions", "◀️ Назад"),
+    )
+    await callback.message.delete()
+
+
+@router.callback_query(F.data.startswith("user:renew:"))
+async def cb_user_renew(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    client_uuid = parts[2] if len(parts) > 2 else None
+    client, ib = await _get_user_client(callback.from_user.id, config)
+    if client_uuid:
+        import json
+        xui = _xui(config)
+        await xui.login()
+        inbounds = await xui.get_inbounds()
+        await xui.close()
+        for ib2 in inbounds:
+            settings = json.loads(ib2.get("settings","{}")) if isinstance(ib2.get("settings","{}"), str) else ib2.get("settings",{})
+            for c in settings.get("clients",[]):
+                if c.get("id") == client_uuid:
+                    client = c
+                    break
+    if client and client.get("expiryTime", 0) == 0:
+        await callback.message.edit_text("У вас бессрочная подписка — продление не требуется.")
+        return
+    client, ib = await _get_user_client(callback.from_user.id, config)
+    if not client:
+        await callback.answer("Подписка не найдена", show_alert=True)
+        return
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="1 месяц",   callback_data="user:renew_req:30")
+    builder.button(text="3 месяца",  callback_data="user:renew_req:90")
+    builder.button(text="6 месяцев", callback_data="user:renew_req:180")
+    builder.button(text="1 год",     callback_data="user:renew_req:365")
+    builder.button(text="◀️ Назад",     callback_data="user:subscriptions")
+    builder.adjust(2, 2, 1)
+    await callback.message.edit_text(
+        "Запрос на продление подписки\n\nВыберите срок:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("user:renew_req:"))
+async def cb_user_renew_req(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    days = int(callback.data.split(":")[2])
+    user = callback.from_user
+    username = f"@{user.username}" if user.username else "нет username"
+    expire_str = {30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
+    client, ib = await _get_user_client(user.id, config)
+    email = client.get("email", "") if client else "неизвестно"
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Продлить", callback_data=f"admin:renew:{user.id}:{email}:{days}")
+    builder.button(text="Отклонить", callback_data=f"admin:renew_deny:{user.id}")
+    builder.adjust(2)
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await callback.bot.send_message(
+                admin_id,
+                f"Запрос на продление\n\nКлиент: {email}\nTG: {user.id} {username}\nСрок: {expire_str}",
+                reply_markup=builder.as_markup(),
+            )
+        except Exception as e:
+            logger.error("Failed to notify admin: %s", e)
+    await callback.message.edit_text(
+        f"Запрос на продление отправлен!\n\nСрок: {expire_str}\n\nОжидайте подтверждения администратора."
+    )
+
+
+@router.callback_query(F.data.startswith("admin:renew:"))
+async def cb_admin_renew(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    parts = callback.data.split(":")
+    user_id = int(parts[2])
+    email = parts[3]
+    days = int(parts[4])
+    import time
+    client, ib = await _get_user_client(user_id, config)
+    if not client:
+        await callback.answer("Клиент не найден", show_alert=True)
+        return
+    current_expiry = client.get("expiryTime", 0)
+    now_ms = int(time.time() * 1000)
+    if current_expiry and current_expiry > now_ms:
+        new_expiry = current_expiry + days * 86400 * 1000
+    else:
+        new_expiry = now_ms + days * 86400 * 1000
+    xui = _xui(config)
+    await xui.login()
+    ok = await xui.update_client(ib["id"], client["id"], expiryTime=new_expiry)
+    await xui.close()
+    expire_str = {30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
+    if ok:
+        try:
+            await callback.bot.send_message(
+                user_id,
+                f"Ваша подписка продлена!\n\nДобавлено: {expire_str}"
+            )
+        except Exception as e:
+            logger.error("Failed to notify user: %s", e)
+        await callback.message.edit_text(
+            callback.message.text + f"\n\nПродлено на {expire_str}",
+            reply_markup=None,
+        )
+    else:
+        await callback.answer("Ошибка продления", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("admin:renew_deny:"))
+async def cb_admin_renew_deny(callback: CallbackQuery):
+    await callback.answer()
+    user_id = int(callback.data.split(":")[2])
+    try:
+        await callback.bot.send_message(user_id, "Запрос на продление отклонён.")
+    except Exception:
+        pass
+    await callback.message.edit_text(
+        callback.message.text + "\n\nОтклонено",
+        reply_markup=None,
+    )
+
+
+@router.callback_query(F.data == "user:subscriptions")
+async def cb_user_subscriptions(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    user_id = callback.from_user.id
+    import json, time
+    xui = _xui(config)
+    await xui.login()
+    inbounds = await xui.get_inbounds()
+    await xui.close()
+    found = []
+    for ib in inbounds:
+        settings_raw = ib.get("settings", "{}")
+        settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
+        for c in settings.get("clients", []):
+            tg = c.get("tgId", 0)
+            if (str(tg) == str(user_id) or tg == user_id) and c.get("subId"):
+                found.append((c, ib))
+    if not found:
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="◀️ Назад", callback_data="user:back")
+        await callback.message.edit_text(
+            "Активных подписок не найдено.\n\nЕсли вы ещё не запрашивали доступ — нажмите Запросить доступ.",
+            reply_markup=builder.as_markup()
+        )
+        return
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    import time
+    builder = InlineKeyboardBuilder()
+    now_ms = int(time.time() * 1000)
+    for c, ib in found:
+        email = c.get("email", "")
+        enabled = c.get("enable", True)
+        expire_ms = c.get("expiryTime", 0)
+        if expire_ms == 0:
+            expire_label = "Бессрочно"
+        elif expire_ms < now_ms:
+            expire_label = "Истекла"
+        else:
+            days_left = (expire_ms - now_ms) // (86400 * 1000)
+            expire_label = f"осталось {days_left} дн."
+        status = "✅" if enabled else "🔴"
+        builder.button(
+            text=f"{status} {email} — {expire_label}",
+            callback_data=f"user:sub_detail:{c.get('id')}"
+        )
+    builder.button(text="◀️ Назад", callback_data="user:back")
+    builder.adjust(1)
+    try:
+        await callback.message.edit_text(
+            "📋 Мои активные подписки:",
+            reply_markup=builder.as_markup()
+        )
+    except Exception:
+        await callback.message.delete()
+        await callback.message.answer(
+            "📋 Мои активные подписки:",
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("user:sub_detail:"))
+async def cb_user_sub_detail(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    client_uuid = ":".join(callback.data.split(":")[2:])
+    user_id = callback.from_user.id
+    import json, time
+    xui = _xui(config)
+    await xui.login()
+    inbounds = await xui.get_inbounds()
+    await xui.close()
+    client_found = None
+    inbound_found = None
+    for ib in inbounds:
+        settings_raw = ib.get("settings", "{}")
+        settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
+        for c in settings.get("clients", []):
+            if c.get("id") == client_uuid:
+                client_found = c
+                inbound_found = ib
+                break
+        if client_found:
+            break
+    if not client_found:
+        await callback.answer("Подписка не найдена", show_alert=True)
+        return
+    from utils import format_expire
+    sub_id = client_found.get("subId", "")
+    sub_link = f"{config.SUB_URL}{sub_id}" if sub_id and config.SUB_URL else None
+    expire_ms = client_found.get("expiryTime", 0)
+    enabled = client_found.get("enable", True)
+    limit_ip = client_found.get("limitIp", 0)
+    email = client_found.get("email", "")
+    status = "Активна" if enabled else "Заблокирована"
+    expire_str = format_expire(expire_ms)
+    now_ms = int(time.time() * 1000)
+    if expire_ms > 0:
+        days_left = max(0, (expire_ms - now_ms) // (86400 * 1000))
+        expire_full = f"{expire_str} (осталось {days_left} дн.)"
+    else:
+        expire_full = "Бессрочно"
+    text = (
+        f"Подписка: {email}\n\n"
+        f"Статус: {status}\n"
+        f"Срок: {expire_full}\n"
+    )
+    if limit_ip:
+        text += f"Устройств: {limit_ip} уст.\n"
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    if sub_link:
+        builder.button(text="🔗 Ссылка подписки", callback_data=f"user:sub_link:{client_uuid}")
+        builder.button(text="📱 QR подписки",     callback_data=f"user:sub_qr:{client_uuid}")
+    if expire_ms != 0:
+        builder.button(text="⏳ Продлить подписку", callback_data=f"user:renew:{client_uuid}")
+    builder.button(text="◀️ Назад", callback_data="user:subscriptions")
+    builder.adjust(2, 1, 1)
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except Exception:
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "user:back")
+async def cb_user_back(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔑 Запросить доступ", callback_data="user:request")
+    builder.button(text="📋 Мои активные подписки", callback_data="user:subscriptions")
+    builder.button(text="📱 Инструкция", callback_data="user:instructions")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        "👋 Добро пожаловать!\n\nДля получения доступа к GlebbI4.VPN нажмите кнопку ниже.",
+        reply_markup=builder.as_markup()
+    )
+
+
+async def _get_user_client(user_id: int, config):
+    import json
+    xui = _xui(config)
+    await xui.login()
+    inbounds = await xui.get_inbounds()
+    await xui.close()
+    for ib in inbounds:
+        settings_raw = ib.get("settings", "{}")
+        settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
+        for c in settings.get("clients", []):
+            tg = c.get("tgId", 0)
+            if str(tg) == str(user_id) or tg == user_id:
+                return c, ib
+    return None, None

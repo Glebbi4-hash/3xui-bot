@@ -6,4 +6,5 @@ class AddClientStates(StatesGroup):
     waiting_email    = State()
     waiting_traffic  = State()
     waiting_devices  = State()
+    waiting_expire_choice = State()
     waiting_expire   = State()

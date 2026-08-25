@@ -42,9 +42,9 @@ def inbound_actions(inbound_id: int, remark: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="👥 Клиенты",        callback_data=f"clients:list:{inbound_id}")
     builder.button(text="➕ Добавить",        callback_data=f"clients:add:{inbound_id}")
-    builder.button(text="◀️ К инбаундам",    callback_data="inbounds:list")
     builder.button(text="📁 Бэкап",             callback_data="backup:menu")
     builder.button(text="🔄 Перезапуск",          callback_data="restart:menu")
+    builder.button(text="◀️ Назад",    callback_data="inbounds:list")
     builder.adjust(2, 2, 1)
     return builder.as_markup()
 
@@ -59,7 +59,7 @@ def inbounds_list_select(inbounds: List[Dict], action: str) -> InlineKeyboardMar
             text=f"{icon} #{ib['id']} {remark}",
             callback_data=f"inbound:{action}:{ib['id']}",
         )
-    builder.button(text="❌ Отмена", callback_data="menu:main")
+    builder.button(text="◀️ Назад", callback_data="menu:main")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -81,7 +81,7 @@ def clients_list(clients: List[Dict], stats: Dict, inbound_id: int) -> InlineKey
             callback_data=f"cl:v:{inbound_id}:{i}",
         )
     builder.button(text="➕ Добавить",      callback_data=f"clients:add:{inbound_id}")
-    builder.button(text="◀️ К инбаунду",   callback_data=f"inbound:open:{inbound_id}")
+    builder.button(text="◀️ Назад",   callback_data=f"inbound:open:{inbound_id}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -96,7 +96,7 @@ def client_actions(inbound_id: int, idx: int, client_id: str, email: str, enable
     builder.button(text=toggle_text,            callback_data=f"cl:t:{inbound_id}:{idx}")
     builder.button(text="🔄 Сбросить трафик",   callback_data=f"cl:r:{inbound_id}:{idx}")
     builder.button(text="🗑 Удалить",           callback_data=f"cl:d:{inbound_id}:{idx}")
-    builder.button(text="◀️ К списку",          callback_data=f"clients:list:{inbound_id}")
+    builder.button(text="◀️ Назад",          callback_data=f"clients:list:{inbound_id}")
     builder.adjust(2, 2, 1, 1, 1, 1)
     return builder.as_markup()
 
@@ -104,7 +104,7 @@ def client_actions(inbound_id: int, idx: int, client_id: str, email: str, enable
 def confirm_delete(inbound_id: int, idx: int, client_id: str, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Да, удалить", callback_data=f"cl:dc:{inbound_id}:{idx}:{client_id}")
-    builder.button(text="❌ Отмена",      callback_data=f"cl:v:{inbound_id}:{idx}")
+    builder.button(text="◀️ Назад",      callback_data=f"cl:v:{inbound_id}:{idx}")
     builder.adjust(2)
     return builder.as_markup()
 
@@ -115,7 +115,7 @@ def confirm_delete(inbound_id: int, idx: int, client_id: str, email: str) -> Inl
 
 def cancel_button(back: str = "menu:main") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="❌ Отмена", callback_data=back)
+    builder.button(text="◀️ Назад", callback_data=back)
     return builder.as_markup()
 
 

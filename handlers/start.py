@@ -31,7 +31,6 @@ async def cmd_start(message: Message, config: Config):
             [KeyboardButton(text="📊 Мониторинг"), KeyboardButton(text="📁 Бэкап")],
         ],
         resize_keyboard=True,
-        is_persistent=True,
     )
     await message.answer(
         "👋 <b>3x-ui Manager</b>\n\nВыберите действие:",

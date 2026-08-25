@@ -58,5 +58,5 @@ async def cb_client_link(callback: CallbackQuery, config: Config):
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=back_button(back_cb, "◀️ Назад к клиенту"),
+        reply_markup=back_button(back_cb, "◀️ Назад"),
     )

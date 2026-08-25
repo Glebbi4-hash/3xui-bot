@@ -59,7 +59,7 @@ async def cb_monitor_traffic(callback: CallbackQuery, config: Config):
 
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Обновить", callback_data="monitor:traffic")
-    builder.button(text="◀️ В меню",   callback_data="menu:main")
+    builder.button(text="◀️ Назад",   callback_data="menu:main")
     builder.adjust(2)
 
     await callback.message.edit_text(

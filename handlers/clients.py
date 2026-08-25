@@ -17,6 +17,91 @@ router.callback_query.middleware(AdminMiddleware())
 def _xui(config):
     return XUIClient(config.PANEL_URL, config.PANEL_USERNAME, config.PANEL_PASSWORD, getattr(config, "API_TOKEN", ""))
 
+def _expire_keyboard():
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="1 месяц",  callback_data="exp:30")
+    builder.button(text="3 месяца", callback_data="exp:90")
+    builder.button(text="6 месяцев", callback_data="exp:180")
+    builder.button(text="1 год",    callback_data="exp:365")
+    builder.button(text="Бессрочно", callback_data="exp:0")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+
+@router.callback_query(F.data.startswith("exp:"))
+async def cb_expire_choice(callback: CallbackQuery, state: FSMContext, config: Config):
+    await callback.answer()
+    days = int(callback.data.split(":")[1])
+    await state.update_data(expire_days=days)
+    await state.set_state(AddClientStates.waiting_expire)
+    expire_str = {0: "Бессрочно", 30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
+    data2 = await state.get_data()
+    email2 = data2.get("email", "")
+    limit2 = data2.get("limit_ip", 0)
+    access2 = data2.get("access_type", "acc")
+    limit_str2 = f"{limit2} уст." if limit2 else "Без лимита"
+    type_str2 = "Подписка" if access2 == "sub" else "Доступ"
+    await callback.message.edit_text(
+        f"Клиент: {email2}\nТип: {type_str2}\nСрок: {expire_str}\nУстройств: {limit_str2}\n\nПодтверждаете создание?")
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Создать", callback_data="exp:confirm")
+    builder.button(text="◀️ Назад", callback_data="menu:main")
+    builder.adjust(2)
+    await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "exp:confirm")
+async def cb_expire_confirm(callback: CallbackQuery, state: FSMContext, config: Config):
+    await callback.answer()
+    data = await state.get_data()
+    await state.clear()
+    days = data.get("expire_days", 30)
+    access_type = data.get("access_type", "acc")
+    inbound_id = data["inbound_id"]
+    limit_ip = data.get("limit_ip", 0)
+    xui = _xui(config)
+    await xui.login()
+    uid = await xui.add_client(inbound_id, email=data["email"],
+        traffic_gb=0, expire_days=days, limit_ip=limit_ip)
+    await xui.close()
+    if not uid:
+        await callback.message.edit_text("Ошибка создания клиента.")
+        return
+    expire_str = {0: "Бессрочно", 30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
+    if access_type == "sub":
+        xui2 = _xui(config)
+        await xui2.login()
+        clients = await xui2.get_clients(inbound_id)
+        await xui2.close()
+        client = next((c for c in clients if c.get("id") == uid), {})
+        sub_id = client.get("subId", "")
+        sub_link = f"{config.SUB_URL}{sub_id}" if sub_id and config.SUB_URL else None
+        if sub_link:
+            import qrcode, io
+            from aiogram.types import BufferedInputFile
+            qr = qrcode.QRCode(box_size=10, border=2)
+            qr.add_data(sub_link)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            await callback.message.answer_photo(
+                photo=BufferedInputFile(buf.read(), filename="sub_qr.png"),
+                caption=f"Клиент {data['email']} создан!\nСрок: {expire_str}\nПодписка: {sub_link}",
+            )
+        else:
+            await callback.message.answer(f"Клиент {data['email']} создан!\nUID: {uid}")
+    else:
+        xui3 = _xui(config)
+        await xui3.login()
+        link = await xui3.get_client_link(inbound_id, uid)
+        await xui3.close()
+        await callback.message.answer(f"Клиент {data['email']} создан!\nСрок: {expire_str}\nVLESS: {link}")
+
+
 async def _get_client(xui, inbound_id, idx):
     clients = await xui.get_clients(inbound_id)
     if idx >= len(clients):
@@ -192,7 +277,7 @@ async def cb_add(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text="Подписка", callback_data=f"add:type:sub:{inbound_id}")
     builder.button(text="Доступ",   callback_data=f"add:type:acc:{inbound_id}")
-    builder.button(text="Отмена",   callback_data=f"inbound:open:{inbound_id}")
+    builder.button(text="◀️ Назад",   callback_data=f"inbound:open:{inbound_id}")
     builder.adjust(2, 1)
     await callback.message.edit_text(
         "Новый клиент\n\nВыберите тип:",
@@ -219,20 +304,7 @@ async def fsm_email(message: Message, state: FSMContext):
     if not email or " " in email:
         await message.answer("❌ Без пробелов, попробуйте ещё раз:")
         return
-    await state.update_data(email=email)
-    await state.set_state(AddClientStates.waiting_traffic)
-    await message.answer(f"📦 Лимит GB (0 = безлимит):",
-        reply_markup=cancel_button(), parse_mode="HTML")
-
-@router.message(AddClientStates.waiting_traffic)
-async def fsm_traffic(message: Message, state: FSMContext):
-    try:
-        gb = int(message.text.strip())
-        assert gb >= 0
-    except:
-        await message.answer("Введите число >= 0:")
-        return
-    await state.update_data(traffic_gb=gb)
+    await state.update_data(email=email, traffic_gb=0)
     data = await state.get_data()
     access_type = data.get("access_type", "acc")
     if access_type == "sub":
@@ -247,17 +319,16 @@ async def fsm_traffic(message: Message, state: FSMContext):
         await state.set_state(AddClientStates.waiting_devices)
         await message.answer("Количество устройств:", reply_markup=builder.as_markup())
     else:
-        await state.set_state(AddClientStates.waiting_expire)
-        await message.answer("Срок в днях (0 = бессрочно):", reply_markup=cancel_button())
-
+        await state.set_state(AddClientStates.waiting_expire_choice)
+        await message.answer("Срок:", reply_markup=_expire_keyboard())
 
 @router.callback_query(F.data.startswith("add:dev:"))
 async def cb_add_devices(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     limit_ip = int(callback.data.split(":")[2])
     await state.update_data(limit_ip=limit_ip)
-    await state.set_state(AddClientStates.waiting_expire)
-    await callback.message.edit_text("Срок в днях (0 = бессрочно):")
+    await state.set_state(AddClientStates.waiting_expire_choice)
+    await callback.message.edit_text("Срок:", reply_markup=_expire_keyboard())
 
 @router.message(AddClientStates.waiting_expire)
 async def fsm_expire(message: Message, state: FSMContext, config: Config):
@@ -372,7 +443,7 @@ async def cb_qr(callback: CallbackQuery, config: Config):
         photo=photo,
         caption=f"📱 <b>QR-код — {email}</b>\n\n<code>{link}</code>",
         parse_mode="HTML",
-        reply_markup=back_button(back_cb, "◀️ Назад к клиенту"),
+        reply_markup=back_button(back_cb, "◀️ Назад"),
     )
     await callback.message.delete()
 
@@ -430,14 +501,14 @@ async def cb_subscription(callback: CallbackQuery, config: Config):
     if not sub_id or not config.SUB_URL:
         await callback.message.edit_text(
             "Подписка недоступна — subId или SUB_URL не заполнены.",
-            reply_markup=back_button(back_cb, "Назад")
+            reply_markup=back_button(back_cb, "◀️ Назад")
         )
         return
     link = f"{config.SUB_URL}{sub_id}"
     text = f"Подписка {email}\n\n{link}\n\nДобавьте в Happ или любой клиент поддерживающий подписки."
     await callback.message.edit_text(
         text,
-        reply_markup=back_button(back_cb, "Назад"),
+        reply_markup=back_button(back_cb, "◀️ Назад"),
     )
 
 
@@ -473,7 +544,7 @@ async def cb_subscription_qr(callback: CallbackQuery, config: Config):
     await callback.message.answer_photo(
         photo=BufferedInputFile(buf.read(), filename="sub_qr.png"),
         caption=f"QR подписки {email}\n\n{link}",
-        reply_markup=back_button(back_cb, "Назад к клиенту"),
+        reply_markup=back_button(back_cb, "◀️ Назад"),
     )
     await callback.message.delete()
 

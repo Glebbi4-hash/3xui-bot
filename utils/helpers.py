@@ -23,8 +23,14 @@ class AdminMiddleware(BaseMiddleware):
             user = event.from_user
 
         # Public callbacks allowed for non-admins
-        public_callbacks = ("user:request", "user:instructions", "instr:android", "instr:ios")
-        if isinstance(event, CallbackQuery) and event.data in public_callbacks:
+        public_callbacks = ("user:request", "user:instructions", "instr:android", "instr:ios", "user:subscription", "user:subscriptions", "user:sub_link", "user:sub_qr", "user:renew", "user:back")
+        if isinstance(event, CallbackQuery) and (
+            event.data in public_callbacks or
+            event.data.startswith("user:sub_detail:") or
+            event.data.startswith("user:sub_link:") or
+            event.data.startswith("user:sub_qr:") or
+            event.data.startswith("user:renew:")
+        ):
             return await handler(event, data)
         if user and user.id not in config.ADMIN_IDS:
             if isinstance(event, Message):
