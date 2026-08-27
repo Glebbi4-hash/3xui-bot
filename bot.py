@@ -6,6 +6,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.session.aiohttp import AiohttpSession
 from config import Config
 from handlers import start, clients, connection, server_stats, requests, monitoring
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from tasks import check_expiring
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +27,10 @@ async def main():
     dp.include_router(clients.router)
     dp.include_router(connection.router)
     dp.include_router(server_stats.router)
+    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+    scheduler.add_job(check_expiring, "cron", hour=18, minute=0, args=[bot, config])
+    scheduler.start()
+    logger.info("Scheduler started (expiry check daily 18:00 MSK)")
     logger.info("Bot started")
     await dp.start_polling(bot, config=config)
 

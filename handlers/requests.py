@@ -511,10 +511,10 @@ async def cb_user_renew(callback: CallbackQuery, config: Config):
         return
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text="1 месяц",   callback_data="user:renew_req:30")
-    builder.button(text="3 месяца",  callback_data="user:renew_req:90")
-    builder.button(text="6 месяцев", callback_data="user:renew_req:180")
-    builder.button(text="1 год",     callback_data="user:renew_req:365")
+    builder.button(text="1 месяц",   callback_data=f"user:renew_req:{client_uuid}:30")
+    builder.button(text="3 месяца",  callback_data=f"user:renew_req:{client_uuid}:90")
+    builder.button(text="6 месяцев", callback_data=f"user:renew_req:{client_uuid}:180")
+    builder.button(text="1 год",     callback_data=f"user:renew_req:{client_uuid}:365")
     builder.button(text="◀️ Назад",     callback_data="user:subscriptions")
     builder.adjust(2, 2, 1)
     await callback.message.edit_text(
@@ -526,16 +526,28 @@ async def cb_user_renew(callback: CallbackQuery, config: Config):
 @router.callback_query(F.data.startswith("user:renew_req:"))
 async def cb_user_renew_req(callback: CallbackQuery, config: Config):
     await callback.answer()
-    days = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    days = int(parts[-1])
+    client_uuid = ":".join(parts[2:-1])
     user = callback.from_user
     username = f"@{user.username}" if user.username else "нет username"
     expire_str = {30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
-    client, ib = await _get_user_client(user.id, config)
-    email = client.get("email", "") if client else "неизвестно"
+    import json
+    xui2 = _xui(config)
+    await xui2.login()
+    inbounds2 = await xui2.get_inbounds()
+    await xui2.close()
+    email = "неизвестно"
+    for ib2 in inbounds2:
+        settings2 = json.loads(ib2.get("settings","{}")) if isinstance(ib2.get("settings","{}"), str) else ib2.get("settings",{})
+        for c2 in settings2.get("clients",[]):
+            if c2.get("id") == client_uuid:
+                email = c2.get("email", "неизвестно")
+                break
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text="Продлить", callback_data=f"admin:renew:{user.id}:{email}:{days}")
-    builder.button(text="Отклонить", callback_data=f"admin:renew_deny:{user.id}")
+    builder.button(text="✅ Продлить", callback_data=f"admin:renew:{user.id}:{client_uuid}:{days}")
+    builder.button(text="❌ Отклонить", callback_data=f"admin:renew_deny:{user.id}")
     builder.adjust(2)
     for admin_id in config.ADMIN_IDS:
         try:
@@ -556,10 +568,24 @@ async def cb_admin_renew(callback: CallbackQuery, config: Config):
     await callback.answer()
     parts = callback.data.split(":")
     user_id = int(parts[2])
-    email = parts[3]
-    days = int(parts[4])
-    import time
-    client, ib = await _get_user_client(user_id, config)
+    days = int(parts[-1])
+    client_uuid = ":".join(parts[3:-1])
+    import time, json
+    xui0 = _xui(config)
+    await xui0.login()
+    inbounds0 = await xui0.get_inbounds()
+    await xui0.close()
+    client = None
+    ib = None
+    for ib2 in inbounds0:
+        settings = json.loads(ib2.get("settings","{}")) if isinstance(ib2.get("settings","{}"), str) else ib2.get("settings",{})
+        for c in settings.get("clients",[]):
+            if c.get("id") == client_uuid:
+                client = c
+                ib = ib2
+                break
+        if client:
+            break
     if not client:
         await callback.answer("Клиент не найден", show_alert=True)
         return
@@ -571,24 +597,23 @@ async def cb_admin_renew(callback: CallbackQuery, config: Config):
         new_expiry = now_ms + days * 86400 * 1000
     xui = _xui(config)
     await xui.login()
-    ok = await xui.update_client(ib["id"], client["id"], expiryTime=new_expiry)
+    ok = await xui.update_client(ib["id"], client["id"], expiryTime=new_expiry, enable=True)
     await xui.close()
     expire_str = {30: "1 месяц", 90: "3 месяца", 180: "6 месяцев", 365: "1 год"}.get(days, f"{days} дн.")
     if ok:
         try:
-            await callback.bot.send_message(
-                user_id,
-                f"Ваша подписка продлена!\n\nДобавлено: {expire_str}"
-            )
+            await callback.bot.send_message(user_id, f"Ваша подписка продлена!\n\nДобавлено: {expire_str}")
         except Exception as e:
             logger.error("Failed to notify user: %s", e)
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        b = InlineKeyboardBuilder()
+        b.button(text="◀️ Назад", callback_data="menu:main")
         await callback.message.edit_text(
-            callback.message.text + f"\n\nПродлено на {expire_str}",
-            reply_markup=None,
+            callback.message.text + f"\n\n✅ Продлено на {expire_str}",
+            reply_markup=b.as_markup(),
         )
     else:
         await callback.answer("Ошибка продления", show_alert=True)
-
 
 @router.callback_query(F.data.startswith("admin:renew_deny:"))
 async def cb_admin_renew_deny(callback: CallbackQuery):

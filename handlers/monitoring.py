@@ -1,4 +1,5 @@
 import logging
+import time
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -39,6 +40,7 @@ async def cb_monitor_traffic(callback: CallbackQuery, config: Config):
                 "down": down,
                 "total": up + down,
                 "enable": s.get("enable", True),
+                "lastOnline": s.get("lastOnline", 0),
             })
 
     all_clients.sort(key=lambda x: x["total"], reverse=True)
@@ -47,9 +49,15 @@ async def cb_monitor_traffic(callback: CallbackQuery, config: Config):
     if not top:
         text = "📊 <b>Мониторинг трафика</b>\n\nНет активных клиентов."
     else:
-        lines = ["📊 <b>Топ клиентов по трафику (сессия)</b>\n"]
+        lines = ["📊 <b>Топ клиентов по трафику (сессия)</b>",
+                 "🟢 онлайн  🔴 офлайн  ⚫ отключён\n"]
         for i, c in enumerate(top, 1):
-            icon = "🟢" if c["enable"] else "🔴"
+            if not c["enable"]:
+                icon = "⚫"
+            elif c["lastOnline"] and (int(time.time()*1000) - c["lastOnline"]) < 180000:
+                icon = "🟢"
+            else:
+                icon = "🔴"
             lines.append(
                 f"{i}. {icon} <b>{c['email']}</b> [{c['inbound']}]\n"
                 f"   ⬆️ {format_bytes(c['up'])}  ⬇️ {format_bytes(c['down'])}  "

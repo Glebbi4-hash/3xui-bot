@@ -120,7 +120,7 @@ async def cb_clients_list(callback: CallbackQuery, config: Config):
     await xui.close()
     remark = (inbound or {}).get("remark") or f"#{inbound_id}"
     await callback.message.edit_text(
-        f"👥 <b>Клиенты — {remark}</b>\nВсего: {len(clients)}",
+        f"👥 <b>Клиенты — {remark}</b>\nВсего: {len(clients)}\n\n🟢 онлайн  🔴 офлайн  ⚫ отключён",
         reply_markup=clients_list(clients, stats, inbound_id),
         parse_mode="HTML",
     )
@@ -133,24 +133,64 @@ async def cb_client_view(callback: CallbackQuery, config: Config):
     await xui.login()
     client, _ = await _get_client(xui, inbound_id, idx)
     stats = await xui.get_client_traffics(inbound_id)
+    inbound = await xui.get_inbound(inbound_id)
     await xui.close()
+    inbound_remark = (inbound or {}).get("remark") or f"#{inbound_id}"
     if not client:
         await callback.answer("Клиент не найден", show_alert=True)
         return
     client_id = client.get("id", "")
     email = client.get("email", "—")
+    tg_id = client.get("tgId", 0)
+    tg_name = ""
+    if tg_id:
+        try:
+            chat = await callback.bot.get_chat(tg_id)
+            tg_name = f"@{chat.username}" if chat.username else chat.full_name
+        except Exception:
+            tg_name = str(tg_id)
     s = stats.get(email, {})
     up, down = s.get("up", 0), s.get("down", 0)
     total_raw = client.get("totalGB", 0)
     expire_ms = client.get("expiryTime", 0)
+    created_at = client.get("created_at", "")
     enabled = client.get("enable", True)
+    limit_ip = client.get("limitIp", 0)
+    import time, datetime
+    now_ms = int(time.time() * 1000)
+    last_online = s.get("lastOnline", 0)
+    if not enabled:
+        status_icon = "⚫"
+        status_str = "Отключён"
+    elif last_online and (now_ms - last_online) < 3 * 60 * 1000:
+        status_icon = "🟢"
+        status_str = "Онлайн"
+    else:
+        status_icon = "🔴"
+        status_str = "Офлайн"
+    last_online_str = datetime.datetime.fromtimestamp(last_online/1000).strftime("%d.%m.%Y %H:%M") if last_online else "Нет данных"
+    if created_at:
+        try:
+            ca_ts = int(created_at) // 1000
+            created_str = datetime.datetime.fromtimestamp(ca_ts).strftime("%d.%m.%Y")
+        except Exception:
+            created_str = str(created_at)[:10]
+    else:
+        created_str = "Нет данных"
     total_str = format_bytes(total_raw) if total_raw else "Безлимит"
+    limit_str = f"{limit_ip} уст." if limit_ip else "Без лимита"
     text = (
-        f"{'🟢' if enabled else '🔴'} <b>{email}</b>\n\n"
+        f"{status_icon} <b>{email}</b>\n\n"
+        f"📋 Инбаунд: {inbound_remark}\n"
+        + (f"👤 Telegram: {tg_name}\n" if tg_name else "")
+        + f"📱 Устройств: {limit_str}\n\n"
+        f"📊 Статус: {status_str}\n"
+        f"🕐 Последний онлайн: {last_online_str}\n"
+        f"📅 Создан: {created_str}\n\n"
         f"⬆️ {format_bytes(up)}  ⬇️ {format_bytes(down)}\n"
         f"📦 Лимит: {total_str}\n"
-        f"⏳ {format_expire(expire_ms)}\n"
-        f"🆔 <code>{client_id}</code>"
+        + (f"⏳ Истекает: {format_expire(expire_ms)}\n" if expire_ms else "⏳ Бессрочно\n")
+        + f"🆔 <code>{client_id}</code>"
     )
     await callback.message.edit_text(
         text, reply_markup=ca(inbound_id, idx, client_id, email, enabled), parse_mode="HTML"
@@ -456,12 +496,22 @@ async def cb_qr_back(callback: CallbackQuery, config: Config):
     await xui.login()
     client, _ = await _get_client(xui, inbound_id, idx)
     stats = await xui.get_client_traffics(inbound_id)
+    inbound = await xui.get_inbound(inbound_id)
     await xui.close()
+    inbound_remark = (inbound or {}).get("remark") or f"#{inbound_id}"
     if not client:
         await callback.answer("Клиент не найден", show_alert=True)
         return
     client_id = client.get("id", "")
     email = client.get("email", "—")
+    tg_id = client.get("tgId", 0)
+    tg_name = ""
+    if tg_id:
+        try:
+            chat = await callback.bot.get_chat(tg_id)
+            tg_name = f"@{chat.username}" if chat.username else chat.full_name
+        except Exception:
+            tg_name = str(tg_id)
     s = stats.get(email, {})
     up, down = s.get("up", 0), s.get("down", 0)
     total_raw = client.get("totalGB", 0)

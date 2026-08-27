@@ -70,12 +70,20 @@ def inbounds_list_select(inbounds: List[Dict], action: str) -> InlineKeyboardMar
 
 def clients_list(clients: List[Dict], stats: Dict, inbound_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    import time
+    now_ms = int(time.time() * 1000)
     for i, client in enumerate(clients):
         email   = client.get("email", "—")
         enabled = client.get("enable", True)
-        icon    = "🟢" if enabled else "🔴"
         s       = stats.get(email, {})
         used_gb = round((s.get("up", 0) + s.get("down", 0)) / 1024 ** 3, 2)
+        last_online = s.get("lastOnline", 0)
+        if not enabled:
+            icon = "⚫"
+        elif last_online and (now_ms - last_online) < 3 * 60 * 1000:
+            icon = "🟢"
+        else:
+            icon = "🔴"
         builder.button(
             text=f"{icon} {email}  ({used_gb} GB)",
             callback_data=f"cl:v:{inbound_id}:{i}",
