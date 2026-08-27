@@ -43,6 +43,27 @@ async def cmd_start_user(message: Message, state: FSMContext, config: Config):
         reply_markup=builder.as_markup(),
     )
 
+def _user_home_kb():
+    b = InlineKeyboardBuilder()
+    b.button(text="🏠 Главное меню", callback_data="user:menu")
+    return b.as_markup()
+
+
+@router.callback_query(F.data == "user:menu")
+async def cb_user_menu(callback: CallbackQuery, config: Config):
+    await callback.answer()
+    if callback.from_user.id in config.ADMIN_IDS:
+        return
+    b = InlineKeyboardBuilder()
+    b.button(text="🔑 Запросить доступ", callback_data="user:request")
+    b.button(text="📋 Мои активные подписки", callback_data="user:subscriptions")
+    b.adjust(1)
+    await callback.message.answer(
+        "👋 Добро пожаловать!\n\nДля получения доступа к GlebbI4.VPN нажмите кнопку ниже.",
+        reply_markup=b.as_markup(),
+    )
+
+
 @router.callback_query(F.data == "user:request")
 async def cb_user_request(callback: CallbackQuery, state: FSMContext, config: Config):
     if callback.from_user.id in config.ADMIN_IDS:
@@ -330,6 +351,7 @@ async def cb_req_create(callback: CallbackQuery, config: Config):
                     f"или отсканируйте QR-код\n\n"
                     f"Перейдите в Мои активные подписки для управления подпиской"
                 ),
+                reply_markup=_user_home_kb(),
             )
         except Exception as e:
             logger.error("Failed to send to user %s: %s", user_id, e)
